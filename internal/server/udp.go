@@ -6,13 +6,17 @@ import (
 )
 
 type serverUDP struct {
-	IP   string
-	Port string
-	conn *net.UDPConn
+	IP        string
+	Port      string
+	conn      *net.UDPConn
+	parentTCP *serverTCP
 }
 
-func NewServerUDP(ip, port string) *serverUDP {
-	return &serverUDP{IP: ip, Port: port}
+func NewServerUDP(ip, port string, parentTCP *serverTCP) *serverUDP {
+	return &serverUDP{
+		IP:        ip,
+		Port:      port,
+		parentTCP: parentTCP}
 }
 
 func (s *serverUDP) Start() error {
@@ -20,6 +24,14 @@ func (s *serverUDP) Start() error {
 	udpAddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
 		return err
+	}
+
+	// make server universal for both tcp/udp combined usage and server interface
+	var handleFunc packetHandleFunc
+	if s.parentTCP == nil {
+		handleFunc = s.handlePacketStandard
+	} else {
+		handleFunc = s.handlePacketIncludintParentTCP
 	}
 
 	conn, err := net.ListenUDP("udp", udpAddr)
@@ -35,11 +47,15 @@ func (s *serverUDP) Start() error {
 		if err != nil {
 			return err
 		}
-		go s.handlePacket(buf[:n], addr)
+		go handleFunc(buf[:n], addr)
 	}
 }
 
-func (s *serverUDP) handlePacket(data []byte, addr *net.UDPAddr) {
+func (s *serverUDP) handlePacketIncludintParentTCP(data []byte, addr *net.UDPAddr) {
+}
+
+func (s *serverUDP) handlePacketStandard(data []byte, addr *net.UDPAddr) {
+	log.Printf("Received from %s: %s\n", addr.String(), string(data))
 }
 
 func (s *serverUDP) Stop() error {
@@ -48,3 +64,5 @@ func (s *serverUDP) Stop() error {
 	}
 	return nil
 }
+
+type packetHandleFunc func(data []byte, addr *net.UDPAddr)

@@ -8,14 +8,16 @@ import (
 )
 
 func main() {
-	cfg := config.LoadConfig()
-	srv, err := server.NewServer(cfg)
-	if err != nil {
-		log.Fatalf("failed to initialize server: %v", err)
-	}
+	cfg := config.New()
+	srv := server.NewServerTCP(cfg.IP, cfg.Port)
 
 	if err := srv.Start(); err != nil {
 		log.Fatalf("server error: %v", err)
+	}
+
+	udp := server.NewServerUDP(cfg.IP, cfg.Port, srv)
+	if err := udp.Start(); err != nil {
+		log.Fatalf("server error :%v", err)
 	}
 
 }

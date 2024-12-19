@@ -8,20 +8,18 @@ import (
 )
 
 type Config struct {
-	IP       string
-	Port     string
-	Protocol string
+	IP   string
+	Port string
 }
 
-func LoadConfig() *Config {
+func New() *Config {
 
 	if err := godotenv.Load(); err != nil {
-		log.Println("no .env file found, using environment variables")
+		log.Fatalf("error loading .env file: %v", err)
 	}
 
 	return &Config{
-		IP:       os.Getenv("SERVER_IP"),
-		Port:     os.Getenv("SERVER_PORT"),
-		Protocol: os.Getenv("SERVER_PROTOCOL"),
+		IP:   os.Getenv("SERVER_IP"),
+		Port: os.Getenv("SERVER_PORT"),
 	}
 }
