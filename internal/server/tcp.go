@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/rand"
 	"log"
 	"net"
 	"sync"
@@ -14,7 +15,7 @@ type serverTCP struct {
 	mutex    *sync.RWMutex
 }
 
-func NewServerTCP(ip, port string) *serverTCP {
+func NewTCP(ip, port string) *serverTCP {
 	return &serverTCP{
 		IP:      ip,
 		Port:    port,
@@ -24,16 +25,14 @@ func NewServerTCP(ip, port string) *serverTCP {
 }
 
 type Client struct {
-	IP   string
-	Port int
 	Conn net.Conn
+	Hash []byte
 }
 
-func NewClientTCP(ip string, port int, conn net.Conn) *Client {
+func NewClientTCP(conn net.Conn, hash []byte) *Client {
 	return &Client{
-		IP:   ip,
-		Port: port,
 		Conn: conn,
+		Hash: hash,
 	}
 }
 
@@ -46,33 +45,44 @@ func (s *serverTCP) Start() error {
 	s.Listener = listener
 	log.Printf("TCP server listening on %s\n", address)
 
-	for {
-		conn, err := s.Listener.Accept()
-		if err != nil {
-			return err
+	go func() {
+		for {
+			conn, err := s.Listener.Accept()
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			go s.handleConnection(conn)
 		}
-		go s.handleConnection(conn)
-	}
+	}()
+	return nil
 }
 
 func (s *serverTCP) handleConnection(conn net.Conn) {
-	defer conn.Close()
+	// defer conn.Close()
 
-	clientAddr := conn.RemoteAddr().String()
+	clientAddr := conn.RemoteAddr().(*net.TCPAddr).IP.String()
 	client := NewClientTCP(
-		conn.RemoteAddr().(*net.TCPAddr).IP.String(), conn.RemoteAddr().(*net.TCPAddr).Port, conn,
+		conn,
+		generateHash(),
 	)
 
 	s.addClient(clientAddr, client)
+	conn.Write(client.Hash)
 	log.Printf("client connected: %s\n", clientAddr)
 
-	defer s.removeClient(clientAddr)
+	// defer s.removeClient(clientAddr)
 }
 
 func (s *serverTCP) addClient(addr string, client *Client) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.clients[addr] = client
+}
+func (s *serverTCP) retrieveClient(addr string) *Client {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.clients[addr]
 }
 
 func (s *serverTCP) removeClient(addr string) {
@@ -87,4 +97,12 @@ func (s *serverTCP) Stop() error {
 		return s.Listener.Close()
 	}
 	return nil
+}
+
+func generateHash() []byte {
+	bytes := make([]byte, 4)
+	if _, err := rand.Read(bytes); err != nil {
+		log.Fatalf("Failed to generate hash: %v", err)
+	}
+	return bytes
 }

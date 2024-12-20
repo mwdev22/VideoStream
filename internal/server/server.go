@@ -14,9 +14,9 @@ type Server interface {
 func NewServer(cfg *config.Config, serverType string) (Server, error) {
 	switch serverType {
 	case "tcp":
-		return NewServerTCP(cfg.IP, cfg.Port), nil
+		return NewTCP(cfg.IP, cfg.Port), nil
 	case "udp":
-		return NewServerUDP(cfg.IP, cfg.Port, nil), nil
+		return NewUDP(cfg.IP, cfg.Port, nil), nil
 	default:
 		return nil, errors.New("unsupported protocol")
 	}

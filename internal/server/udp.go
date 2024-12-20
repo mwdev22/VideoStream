@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"log"
 	"net"
 )
@@ -12,7 +13,7 @@ type serverUDP struct {
 	parentTCP *serverTCP
 }
 
-func NewServerUDP(ip, port string, parentTCP *serverTCP) *serverUDP {
+func NewUDP(ip, port string, parentTCP *serverTCP) *serverUDP {
 	return &serverUDP{
 		IP:        ip,
 		Port:      port,
@@ -31,7 +32,7 @@ func (s *serverUDP) Start() error {
 	if s.parentTCP == nil {
 		handleFunc = s.handlePacketStandard
 	} else {
-		handleFunc = s.handlePacketIncludintParentTCP
+		handleFunc = s.handlePacketIncludingParentTCP
 	}
 
 	conn, err := net.ListenUDP("udp", udpAddr)
@@ -51,11 +52,20 @@ func (s *serverUDP) Start() error {
 	}
 }
 
-func (s *serverUDP) handlePacketIncludintParentTCP(data []byte, addr *net.UDPAddr) {
+func (s *serverUDP) handlePacketIncludingParentTCP(data []byte, addr *net.UDPAddr) {
+	client := s.parentTCP.retrieveClient(addr.IP.String())
+	fmt.Println(addr.IP.String(), client)
+	if client == nil {
+		return
+	}
+	hash := data[:4]
+	if string(hash) != string(client.Hash) {
+		fmt.Println(hash, "\n", client.Hash)
+		return
+	}
 }
 
 func (s *serverUDP) handlePacketStandard(data []byte, addr *net.UDPAddr) {
-	log.Printf("Received from %s: %s\n", addr.String(), string(data))
 }
 
 func (s *serverUDP) Stop() error {

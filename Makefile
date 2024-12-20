@@ -1,6 +1,7 @@
 PROJECT_NAME := Custom-Protocol-Server
 PKG := ./...
-MAIN := ./cmd/
+MAIN_SERVER := ./cmd/server/
+MAIN_CLIENT := ./cmd/client/
 
 # go commands
 BUILD := go build
@@ -31,5 +32,7 @@ vet:
 test:
 	$(TEST) $(PKG)
 
-run:
-	$(RUN) $(MAIN)
+run-client:
+	$(RUN) $(MAIN_CLIENT)
+run-server:
+	$(RUN) $(MAIN_SERVER)
