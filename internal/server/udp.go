@@ -28,12 +28,6 @@ func (s *serverUDP) Start() error {
 	}
 
 	// make server universal for both tcp/udp combined usage and server interface
-	var handleFunc packetHandleFunc
-	if s.parentTCP == nil {
-		handleFunc = s.handlePacketStandard
-	} else {
-		handleFunc = s.handlePacketIncludingParentTCP
-	}
 
 	conn, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
@@ -42,19 +36,19 @@ func (s *serverUDP) Start() error {
 	s.conn = conn
 	log.Printf("UDP server listening on %s\n", address)
 
-	buf := make([]byte, 1024)
+	// 4 bytes of hash, 4096 of video data
+	buf := make([]byte, 4100)
 	for {
 		n, addr, err := conn.ReadFromUDP(buf)
 		if err != nil {
 			return err
 		}
-		go handleFunc(buf[:n], addr)
+		go s.handlePacket(buf[:n], addr)
 	}
 }
 
-func (s *serverUDP) handlePacketIncludingParentTCP(data []byte, addr *net.UDPAddr) {
+func (s *serverUDP) handlePacket(data []byte, addr *net.UDPAddr) {
 	client := s.parentTCP.retrieveClient(addr.IP.String())
-	fmt.Println(addr.IP.String(), client)
 	if client == nil {
 		return
 	}
@@ -63,9 +57,7 @@ func (s *serverUDP) handlePacketIncludingParentTCP(data []byte, addr *net.UDPAdd
 		fmt.Println(hash, "\n", client.Hash)
 		return
 	}
-}
-
-func (s *serverUDP) handlePacketStandard(data []byte, addr *net.UDPAddr) {
+	fmt.Printf("received %d bytes from %s\n", len(data), addr)
 }
 
 func (s *serverUDP) Stop() error {
@@ -74,5 +66,3 @@ func (s *serverUDP) Stop() error {
 	}
 	return nil
 }
-
-type packetHandleFunc func(data []byte, addr *net.UDPAddr)

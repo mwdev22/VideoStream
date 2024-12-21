@@ -7,6 +7,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
+const MaxPacketSize = 4096
+
 type Config struct {
 	IP   string
 	Port string
