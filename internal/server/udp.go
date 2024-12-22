@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"net"
@@ -36,8 +37,9 @@ func (s *serverUDP) Start() error {
 	s.conn = conn
 	log.Printf("UDP server listening on %s\n", address)
 
-	// 4 bytes of hash, 4096 of video data
-	buf := make([]byte, 4100)
+	// packet format:
+	// | Hash (32 bytes) | Video Data (4096 bytes) |
+	buf := make([]byte, 4128)
 	for {
 		n, addr, err := conn.ReadFromUDP(buf)
 		if err != nil {
@@ -52,12 +54,17 @@ func (s *serverUDP) handlePacket(data []byte, addr *net.UDPAddr) {
 	if client == nil {
 		return
 	}
-	hash := data[:4]
-	if string(hash) != string(client.Hash) {
-		fmt.Println(hash, "\n", client.Hash)
+	hash := data[:32]
+
+	videoData := data[32:]
+
+	if !bytes.Equal(hash, client.Hash) {
+		log.Printf("Hash mismatch for client %s: expected %x, received %x", addr.String(), client.Hash, hash)
+		client.Quit <- struct{}{}
 		return
 	}
-	fmt.Printf("received %d bytes from %s\n", len(data), addr)
+	fmt.Printf("receive %d video bytes from %s\n", len(videoData), addr)
+
 }
 
 func (s *serverUDP) Stop() error {

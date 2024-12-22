@@ -7,6 +7,27 @@ import (
 	"github.com/joho/godotenv"
 )
 
+type ErrorCode int
+
+const (
+	ErrorCodeOK ErrorCode = iota
+	ErrorCodeInvalidRequest
+	ErrorCodeInvalidHash
+)
+
+func (e ErrorCode) String() string {
+	switch e {
+	case ErrorCodeOK:
+		return "health check OK"
+	case ErrorCodeInvalidRequest:
+		return "Invalid Request"
+	case ErrorCodeInvalidHash:
+		return "Invalid Hash"
+	default:
+		return "Unknown"
+	}
+}
+
 const MaxPacketSize = 4096
 
 type Config struct {

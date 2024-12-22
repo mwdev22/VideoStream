@@ -1,35 +1,36 @@
 package main
 
 import (
-	"flag"
+	"encoding/binary"
 	"log"
 	"net"
-	"os"
 	"time"
 
-	"github.com/blackjack/webcam"
+	cam "github.com/mwdev22/Custom-Protocol-Server/internal/client"
 	"github.com/mwdev22/Custom-Protocol-Server/internal/config"
 )
 
 var (
-	dev = flag.String("d", "/dev/video0", "video device to use")
+	health = make(chan struct{})
 )
 
 func main() {
 	cfg := config.New()
 	tcpConn, err := net.Dial("tcp", cfg.IP+":"+cfg.Port)
 	if err != nil {
-		log.Fatalf("Error connecting to TCP server: %v", err)
+		log.Fatalf("error connecting to TCP server: %v", err)
 	}
 	defer tcpConn.Close()
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, 32) // SHA-256 produces a 32-byte hash
 	n, err := tcpConn.Read(buf)
 	if err != nil {
 		log.Fatalf("error reading from TCP server: %v", err)
 	}
-	log.Printf("received: %s", string(buf[:n]))
 	hash := buf[:n]
+	log.Printf("Received hash from server: %x", hash)
+
+	go monitorConnection(tcpConn)
 
 	udpAddr := cfg.IP + ":9000"
 
@@ -39,60 +40,77 @@ func main() {
 	}
 	defer udpConn.Close()
 
-	cam, err := webcam.Open(*dev)
+	cam, err := cam.New()
 	if err != nil {
-		log.Fatalf("error opening camera: %v", err)
-		os.Exit(1)
+		log.Fatalf("error setting up camera: %v", err)
 	}
-
-	defer cam.Close()
-
-	cam.SetFramerate(30)
-	format_desc := cam.GetSupportedFormats()
-	var format webcam.PixelFormat
-
-	for k, s := range format_desc {
-		if s == "Motion-JPEG" {
-			format = k
-		}
-	}
-	_, _, _, err = cam.SetImageFormat(format, 640, 480)
-	if err != nil {
-		log.Fatalf("error setting image format: %v", err)
-	}
-
-	err = cam.StartStreaming()
-	if err != nil {
-		log.Fatalf("error starting streaming: %v", err)
-	}
-	for {
-		frame, err := cam.ReadFrame()
-		if err != nil {
-			log.Println("error reading frame: ", err)
-		}
-		numPackets := len(frame) / config.MaxPacketSize
-		if len(frame)%config.MaxPacketSize != 0 {
-			numPackets++
-		}
-
-		for i := 0; i < numPackets; i++ {
-			start := i * config.MaxPacketSize
-			end := (i + 1) * config.MaxPacketSize
-			if end > len(frame) {
-				end = len(frame)
-			}
-
-			packet := frame[start:end]
-
-			data := append(hash, packet...)
-
-			_, err := udpConn.Write([]byte(data))
+	go func() {
+		defer cam.Close()
+		for {
+			frame, err := cam.ReadFrame()
 			if err != nil {
-				log.Printf("Error sending UDP data: %v", err)
+				log.Println("error reading frame: ", err)
+				continue // skip the current iteration and try reading the next frame
 			}
-			log.Printf("sent %d bytes to %s\n", len(data), udpAddr)
+
+			// calculate number of packets
+			numPackets := len(frame) / config.MaxPacketSize
+			if len(frame)%config.MaxPacketSize != 0 {
+				numPackets++
+			}
+
+			for i := 0; i < numPackets; i++ {
+				// calculate start and end of packet
+				start := i * config.MaxPacketSize
+				end := (i + 1) * config.MaxPacketSize
+				// last packet is usually shorter
+				if end > len(frame) {
+					end = len(frame)
+				}
+
+				packet := frame[start:end]
+
+				// append hash to the video data
+				data := append(hash, packet...)
+
+				// send the packet via UDP
+				_, err := udpConn.Write(data)
+				if err != nil {
+					log.Printf("error sending UDP data: %v", err)
+					continue // skip sending this packet and try again
+				}
+			}
+
+			// sleep to control the frame rate (can be adjusted based on requirements)
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+
+	<-health
+
+	tcpConn.Close()
+	udpConn.Close()
+
+}
+
+func monitorConnection(conn net.Conn) {
+	for {
+		buf := make([]byte, 4)
+		_, err := conn.Read(buf)
+		if err != nil {
+			log.Fatalf("error reading from TCP server: %v", err)
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		code := config.ErrorCode(binary.BigEndian.Uint32(buf))
+		switch code {
+		case config.ErrorCodeOK:
+			log.Println("--- Connection is OK, received status from TCP server ---")
+		case config.ErrorCodeInvalidRequest:
+			log.Println(config.ErrorCodeInvalidRequest)
+			health <- struct{}{}
+		case config.ErrorCodeInvalidHash:
+			log.Println(config.ErrorCodeInvalidHash)
+			health <- struct{}{}
+		}
 	}
 }
